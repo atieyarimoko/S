@@ -99,8 +99,8 @@ def configured_provider(environ=None):
     endpoint = values.get("MARS_MODEL_URL", DEFAULT_ENDPOINT).strip()
     parsed = urllib.parse.urlparse(endpoint)
     local_hosts = {"localhost", "127.0.0.1", "::1"}
-    if parsed.hostname not in local_hosts and values.get("MARS_ALLOW_REMOTE_MODEL") != "1":
-        return None, "外部モデルへの送信は MARS_ALLOW_REMOTE_MODEL=1 の明示許可が必要です"
+    if parsed.hostname not in local_hosts:
+        return None, "継続的な無料利用を保証できない外部モデルは利用できません。Ollamaなどローカルモデルを指定してください"
     try:
         timeout = max(5, min(int(values.get("MARS_MODEL_TIMEOUT", "90")), 120))
         provider = OpenAICompatibleProvider(

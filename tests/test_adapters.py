@@ -25,11 +25,16 @@ class ModelAdapterTests(unittest.TestCase):
         self.assertIsNone(provider)
         self.assertIn("未設定", status)
 
-    def test_remote_provider_requires_explicit_consent(self):
-        provider, status = configured_provider({"MARS_MODEL": "example", "MARS_MODEL_URL": "https://api.example.com/v1"})
-
-        self.assertIsNone(provider)
-        self.assertIn("明示許可", status)
+    def test_remote_provider_is_rejected_even_when_remote_access_is_enabled(self):
+        for extra in ({}, {"MARS_ALLOW_REMOTE_MODEL": "1"}):
+            with self.subTest(extra=extra):
+                provider, status = configured_provider({
+                    "MARS_MODEL": "example",
+                    "MARS_MODEL_URL": "https://api.example.com/v1",
+                    **extra,
+                })
+                self.assertIsNone(provider)
+                self.assertIn("ローカルモデル", status)
 
     def test_parse_json_from_fenced_model_response(self):
         value = parse_json_object('```json\n{"action":"complete"}\n```')

@@ -41,7 +41,7 @@
           <span class="runtime-dot" aria-hidden="true"></span>
           <div><strong>ローカル保存</strong><small>この端末のデータベース</small></div>
         </div>
-        <div class="sidebar-foot">Mars <span>v0.2 · Phase 1-4</span></div>
+        <div class="sidebar-foot">Mars <span>v0.2 · Phase 1-7</span></div>
       </div>
     </aside>
 
@@ -84,7 +84,7 @@
         <section class="notice" role="status">
           <span class="notice-symbol" aria-hidden="true">i</span>
           <p>タスクを保存し、設定済みモデルで計画・検索・公開HTTPSページの調査を行います。</p>
-          <span class="notice-phase">PHASE 1-4</span>
+          <span class="notice-phase">PHASE 1-7</span>
         </section>
 
         <section class="task-composer" aria-labelledby="new-task-title">
@@ -115,7 +115,7 @@
               <span class="field-label">分析する画像・動画（任意）</span>
               <select id="task-media-files" multiple size="3" aria-describedby="task-media-hint"></select>
             </label>
-            <p class="file-location" id="task-media-hint">ファイル管理に保存済みの画像・動画を選ぶと、タスク開始時に分析し、結果をタスクの作業記録へ保存します。</p>
+            <p class="file-location" id="task-media-hint">ファイル管理に保存済みの画像・動画を選ぶと、タスク開始時に分析します。CSV/JSONの数値分析や計算は自律タスク内で実行し、検算結果を作業記録へ保存します。</p>
             <div class="composer-footer">
               <span class="save-hint"><span class="save-check" aria-hidden="true">✓</span>入力内容はこの端末に保存されます</span>
               <button class="button-primary" type="submit"><span aria-hidden="true">＋</span> タスクを保存</button>
@@ -226,7 +226,7 @@
             <article class="settings-card">
               <h3>モデル接続</h3>
               <p id="settings-model">環境変数で設定します。APIキーを画面やデータベースには保存しません。</p>
-              <p>外部モデルを使う場合、会話・依頼内容・関連記憶がモデル提供者へ送信されます。外部接続には明示的な設定が必要です。</p>
+              <p>モデルへの接続はループバック上のローカル環境だけに限定し、外部モデルAPIや有料APIへの切替は行いません。モデルのライセンスは取得前に個別確認してください。</p>
             </article>
             <article class="settings-card">
               <h3>アクセス保護</h3>

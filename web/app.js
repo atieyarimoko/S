@@ -125,6 +125,23 @@ function makeElement(tag, className, text) {
   return element;
 }
 
+function appendDataTable(container, headings, rows) {
+  const table = makeElement("table", "finding-table");
+  const header = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headings.forEach((heading) => headerRow.append(makeElement("th", "", heading)));
+  header.append(headerRow);
+  table.append(header);
+  const body = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tableRow = document.createElement("tr");
+    row.forEach((value) => tableRow.append(makeElement("td", "", value ?? "—")));
+    body.append(tableRow);
+  });
+  table.append(body);
+  container.append(table);
+}
+
 function priorityElement(priority) {
   const wrap = makeElement("span", "priority-mark");
   wrap.setAttribute("aria-label", `優先度 ${priority} / 5`);
@@ -260,6 +277,69 @@ function createTaskCard(task, index) {
             item.append(makeSourceLink(finding.url, `${finding.title} · ${formatTime(finding.fetched_at)}`));
             item.append(makeElement("p", "finding-excerpt", `${finding.text.slice(0, 420)}${finding.text.length > 420 ? "…" : ""}`));
           }
+        } else if (finding.type === "calculation") {
+          item.append(makeElement("strong", "", `計算: ${finding.expression}`));
+          item.append(makeElement("p", "finding-excerpt", `結果: ${finding.value}`));
+          item.append(makeElement(
+            "p",
+            "finding-excerpt",
+            `検算: ${finding.verification?.passed ? "合格" : "未合格"} · ${finding.verification?.method || ""}`,
+          ));
+        } else if (finding.type === "data_analysis") {
+          const result = finding.result || {};
+          item.append(makeElement(
+            "strong",
+            "",
+            `データ分析: ${finding.path} · ${result.row_count ?? 0}行 · ${finding.status === "verified" ? "検証済み" : "未検証"}`,
+          ));
+          const numeric = Object.entries(result.numeric || {});
+          if (numeric.length) {
+            appendDataTable(
+              item,
+              ["数値列", "件数", "合計", "平均", "中央値", "母標準偏差", "最小", "最大"],
+              numeric.map(([column, summary]) => [
+                column,
+                summary.count,
+                summary.sum,
+                summary.mean,
+                summary.median,
+                summary.population_stddev,
+                summary.min,
+                summary.max,
+              ]),
+            );
+          }
+          const groups = result.groups?.values || [];
+          if (groups.length) {
+            const columns = Object.keys(groups[0].numeric || {});
+            appendDataTable(
+              item,
+              ["分類", "行数", ...columns.map((column) => `${column}平均`)],
+              groups.map((group) => [
+                group.value,
+                group.row_count,
+                ...columns.map((column) => group.numeric[column]?.mean),
+              ]),
+            );
+          }
+          const trends = Object.entries(result.linear_trends?.columns || {});
+          if (trends.length) {
+            item.append(makeElement(
+              "p",
+              "finding-excerpt",
+              `傾向（X: ${result.linear_trends.x_column}）: ${trends.map(([column, trend]) =>
+                `${column} ${trend.trend || trend.status}${trend.slope ? ` / 傾き ${trend.slope}` : ""}`
+              ).join(" · ")}`,
+            ));
+          }
+          if (result.group_count_chart?.length) {
+            item.append(makeElement("pre", "finding-excerpt analysis-chart", result.group_count_chart.join("\n")));
+          }
+          item.append(makeElement(
+            "p",
+            "finding-excerpt",
+            `検算: ${finding.verification?.passed ? "合格" : "未合格"} · 元データSHA-256 ${result.source_sha256 || "不明"}`,
+          ));
         }
         findings.append(item);
       });

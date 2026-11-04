@@ -398,6 +398,50 @@ class AgentWorkerTests(unittest.TestCase):
         self.assertEqual(failed["status"], "failed")
         self.assertEqual(failed["retry_count"], active["max_retries"] + 1)
 
+    def test_agent_calculates_and_uses_verified_result_as_step_evidence(self):
+        provider = FakeProvider()
+        provider.responses = iter([
+            '{"steps":[{"step":"計算する","acceptance_criteria":"計算結果を検算している"}]}',
+            '{"action":"calculate","expression":"sqrt(2) * sqrt(2) + mean([2, 4])"}',
+            '{"action":"complete_step","step":"計算する","evidence_ids":[0],"justification":"計算エンジンで実行し、異なる精度の再計算も通過した"}',
+            '{"action":"complete","summary":"検算済みの計算結果は5です。"}',
+        ])
+        worker = AgentWorker(self.store, provider)
+        task = self.store.create("計算", "計算式を求める", 3)
+
+        worker.run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+
+        self.assertEqual(completed["status"], "completed")
+        finding = completed["findings"][0]
+        self.assertEqual(finding["type"], "calculation")
+        self.assertEqual(finding["value"], "5")
+        self.assertTrue(finding["verification"]["passed"])
+        self.assertEqual(completed["completed_steps"][0]["evidence_ids"], [0])
+
+    def test_agent_analyzes_local_csv_and_rejects_stale_data_at_completion(self):
+        self.files.create("sales.csv", "quarter,region,revenue\n1,east,10\n2,east,20\n")
+        provider = FakeProvider()
+        provider.responses = iter([
+            '{"steps":[{"step":"売上を分析する","acceptance_criteria":"集計結果を再計算で検証している"}]}',
+            '{"action":"analyze_file","path":"sales.csv","numeric_columns":["quarter","revenue"],"group_by":"region","x_column":"quarter","y_columns":["revenue"]}',
+            '{"action":"complete_step","step":"売上を分析する","evidence_ids":[0],"justification":"ローカルCSVを集計し、全結果を再計算で照合した"}',
+            '{"action":"complete","summary":"売上データの分析を完了しました。"}',
+        ])
+        worker = AgentWorker(self.store, provider, file_store=self.files)
+        task = self.store.create("CSV分析", "売上データを分析する", 3)
+
+        worker.run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+
+        self.assertEqual(completed["status"], "completed")
+        finding = completed["findings"][0]
+        self.assertEqual(finding["type"], "data_analysis")
+        self.assertEqual(finding["result"]["numeric"]["revenue"]["mean"], "15")
+        self.assertTrue(finding["verification"]["passed"])
+        self.files.save("sales.csv", "quarter,region,revenue\n1,east,10\n2,east,30\n")
+        self.assertIn("元データが変更", worker._completion_error(completed, "完了"))
+
     def test_media_analysis_is_saved_and_reused_in_task_findings(self):
         files = LocalFileStore(Path(self.temp_dir.name) / "files")
         image = io.BytesIO()
