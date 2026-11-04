@@ -182,6 +182,9 @@ function createTaskCard(task, index) {
         if (step.acceptance_criteria) {
           row.append(makeElement("p", "finding-excerpt", `達成条件: ${step.acceptance_criteria}`));
         }
+        if (step.requires_artifact) {
+          row.append(makeElement("p", "finding-excerpt", "このステップには検証済み成果物が必要です"));
+        }
         if (completion?.justification) {
           row.append(makeElement("p", "finding-excerpt", `根拠: ${completion.justification}`));
         }
@@ -212,6 +215,29 @@ function createTaskCard(task, index) {
             item.append(makeElement("p", "error-entry", `分析できませんでした: ${finding.error}`));
           } else {
             item.append(makeElement("p", "finding-excerpt", "分析待ち。タスクを再開すると処理します。"));
+          }
+        } else if (finding.type === "local_file" || finding.type === "artifact") {
+          const verified = finding.type === "local_file" || finding.status === "verified";
+          item.append(makeElement(
+            "strong",
+            "",
+            `${finding.type === "artifact" ? "成果物" : "入力ファイル"}: ${finding.path}${verified ? " · 検証済み" : " · 検証待ち"}`,
+          ));
+          if (finding.validation) item.append(makeElement("p", "finding-excerpt", `検証: ${finding.validation}`));
+          if (finding.content) {
+            const preview = makeElement("pre", "finding-excerpt artifact-preview", finding.content);
+            item.append(preview);
+          }
+          if (finding.truncated) {
+            item.append(makeElement("p", "finding-excerpt", "プレビューは20,000文字で省略されています。"));
+          }
+          if (finding.type === "artifact") {
+            const link = document.createElement("a");
+            link.className = "task-action file-download";
+            link.href = `/api/files/download?${new URLSearchParams({ path: finding.path })}`;
+            link.download = finding.path.split("/").pop();
+            link.textContent = "成果物をダウンロード";
+            item.append(link);
           }
         } else if (finding.type === "search") {
           item.append(makeElement("strong", "", `検索: ${finding.query}`));

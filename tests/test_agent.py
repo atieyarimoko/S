@@ -1,3 +1,4 @@
+import hashlib
 import json
 import io
 import tempfile
@@ -51,6 +52,7 @@ class AgentWorkerTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.store = TaskStore(Path(self.temp_dir.name) / "mars.sqlite3")
+        self.files = LocalFileStore(Path(self.temp_dir.name) / "files")
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -242,6 +244,134 @@ class AgentWorkerTests(unittest.TestCase):
         self.assertEqual(len(resumed["completed_steps"]), 1)
         self.assertEqual(first_action_prompt["completed_steps"], [])
         self.assertTrue(any("旧形式の進捗" in event["message"] for event in resumed["events"]))
+
+    def test_agent_creates_verifies_and_delivers_json_and_csv(self):
+        provider = FakeProvider()
+        provider.responses = iter([
+            '{"steps":["JSONレポートを作成する","CSV表を作成する"]}',
+            '{"action":"write_file","path":"reports/summary.json","mode":"create","content":"{\\n  \\"result\\": \\"verified\\"\\n}"}',
+            '{"action":"write_file","path":"reports/summary.csv","mode":"create","content":"name,score\\nMars,100\\n"}',
+            '{"action":"complete","summary":"JSONとCSVを作成しました。"}',
+            '{"action":"verify_file","path":"reports/summary.json"}',
+            '{"action":"verify_file","path":"reports/summary.csv"}',
+            '{"action":"complete_step","step":"JSONレポートを作成する","evidence_ids":[0],"justification":"JSONを再読込し構文とSHA-256を検証した"}',
+            '{"action":"complete_step","step":"CSV表を作成する","evidence_ids":[1],"justification":"CSVを再読込し構文とSHA-256を検証した"}',
+            '{"action":"complete","summary":"JSONとCSVを作成し、再読込検証しました。"}',
+        ])
+        task = self.store.create("表を作成", "JSONとCSVの成果物を作成する", 3)
+
+        AgentWorker(self.store, provider, file_store=self.files).run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+        prompts = [json.loads(prompt) for prompt in provider.prompts[1:]]
+
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(len(completed["findings"]), 2)
+        self.assertTrue(all(item["status"] == "verified" for item in completed["findings"]))
+        self.assertIn('"result": "verified"', self.files.read("reports/summary.json"))
+        self.assertEqual(self.files.read("reports/summary.csv"), "name,score\nMars,100\n")
+        self.assertEqual(
+            [step["evidence_ids"] for step in completed["completed_steps"]],
+            [[0], [1]],
+        )
+        self.assertEqual(sum(event["kind"] == "verification_failed" for event in completed["events"]), 1)
+        self.assertIn("verify_file", prompts[1]["instruction"])
+
+    def test_agent_edits_only_a_file_it_read_at_the_matching_hash(self):
+        original = "name,score\nMars,10\n"
+        self.files.create("report.csv", original)
+        task = self.store.create("CSV編集", "既存CSVを更新する", 3)
+        provider = FakeProvider()
+        provider.responses = iter([
+            '{"steps":["既存CSVを編集する"]}',
+            '{"action":"read_file","path":"report.csv"}',
+            '{"action":"write_file","path":"report.csv","mode":"update","expected_sha256":"' + "0" * 64 + '","content":"name,score\\nMars,20\\n"}',
+            '{"action":"write_file","path":"report.csv","mode":"update","expected_sha256":"'
+            + hashlib.sha256(original.encode()).hexdigest()
+            + '","content":"name,score\\nMars,20\\n"}',
+            '{"action":"verify_file","path":"report.csv"}',
+            '{"action":"complete_step","step":"既存CSVを編集する","evidence_ids":[1],"justification":"CSVを編集し、再読込と構文検証を実施した"}',
+            '{"action":"complete","summary":"CSVを更新し検証しました。"}',
+        ])
+
+        AgentWorker(self.store, provider, file_store=self.files).run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(self.files.read("report.csv"), "name,score\nMars,20\n")
+        self.assertTrue(any("読み込み後に変更" in event["message"] for event in completed["events"]))
+        self.assertEqual(len([item for item in completed["findings"] if item["type"] == "artifact"]), 1)
+        self.assertEqual(completed["findings"][1]["status"], "verified")
+
+    def test_agent_will_not_mark_malformed_json_or_csv_as_verified(self):
+        task = self.store.create("壊れたCSV", "CSVの検証失敗を報告する", 3)
+        malformed = 'a,b\n"unterminated'
+        provider = FakeProvider()
+        provider.responses = iter([
+            '{"steps":["CSVを作成する"]}',
+            '{"action":"write_file","path":"broken.csv","mode":"create","content":"a,b\\n\\"unterminated"}',
+            '{"action":"verify_file","path":"broken.csv"}',
+            '{"action":"complete","summary":"検証済みです。"}',
+            '{"action":"read_file","path":"broken.csv"}',
+            '{"action":"write_file","path":"broken.csv","mode":"update","expected_sha256":"'
+            + hashlib.sha256(malformed.encode()).hexdigest()
+            + '","content":"a,b\\n1,2\\n"}',
+            '{"action":"verify_file","path":"broken.csv"}',
+            '{"action":"complete_step","step":"CSVを作成する","evidence_ids":[0],"justification":"CSVの再読込・構文検証に成功した"}',
+            '{"action":"complete","summary":"CSVを修復して検証しました。"}',
+        ])
+
+        AgentWorker(self.store, provider, file_store=self.files).run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(completed["findings"][0]["status"], "verified")
+        self.assertTrue(any(event["kind"] == "tool_error" for event in completed["events"]))
+        self.assertTrue(any(event["kind"] == "verification_failed" for event in completed["events"]))
+
+    def test_requested_artifact_is_required_and_must_be_step_evidence(self):
+        task = self.store.create("成果物必須", "summary.csv を作成してください", 3)
+        active = self.store.claim_next()
+        worker = AgentWorker(self.store, FakeProvider(), file_store=self.files)
+        plan = worker._parse_steps(["CSVを作成して検証する"])
+        worker._mark_required_artifact(plan, task["goal"])
+        self.store.checkpoint(
+            task["id"],
+            {
+                "status": "running",
+                "plan": plan,
+                "remaining_steps": plan,
+                "findings": [{
+                    "type": "local_file",
+                    "path": "input.csv",
+                    "status": "read",
+                    "content": "name,score\nMars,10\n",
+                    "sha256": "a" * 64,
+                }],
+            },
+        )
+
+        accepted, message = worker._complete_step(
+            task["id"],
+            {
+                "step": plan[0]["step"],
+                "evidence_ids": [0],
+                "justification": "入力CSVを読んだ",
+            },
+        )
+        current = self.store.get(task["id"])
+        incomplete = {
+            **current,
+            "completed_steps": [{
+                **plan[0],
+                "evidence_ids": [0],
+                "justification": "入力CSVを読んだ",
+            }],
+            "remaining_steps": [],
+        }
+
+        self.assertFalse(accepted)
+        self.assertIn("成果物", message)
+        self.assertIn("成果物がありません", worker._completion_error(incomplete, "完了"))
 
     def test_model_failure_waits_before_retry(self):
         worker = AgentWorker(self.store, FakeProvider())

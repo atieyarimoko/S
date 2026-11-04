@@ -125,6 +125,7 @@ input:focus, textarea:focus, select:focus { border-color: #64a38f; box-shadow: 0
 .finding-item a { color: #286c58; text-decoration: underline; text-underline-offset: 2px; }
 .finding-item a:hover { color: #194f3e; }
 .finding-excerpt { margin: 5px 0 0; color: #77827d; line-height: 1.6; }
+.artifact-preview { max-height: 260px; overflow: auto; padding: 8px; border: 1px solid #edf0ee; border-radius: 3px; background: white; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .error-entry { color: #a0473b; overflow-wrap: anywhere; }
 .priority-mark { display: inline-flex; gap: 2px; }
 .priority-mark i { width: 3px; height: 9px; border-radius: 1px; background: #dfe5e2; }
