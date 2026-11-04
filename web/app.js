@@ -159,6 +159,9 @@ function createTaskCard(task, index) {
   metadata.append(priority);
   const updated = makeElement("span", "", `更新 ${formatTime(task.updated_at)}`);
   metadata.append(updated);
+  if (task.plan.length) {
+    metadata.append(makeElement("span", "", `進捗 ${task.completed_steps.length}/${task.plan.length} ステップ`));
+  }
   if (task.next_action) metadata.append(makeElement("span", "", task.next_action));
   main.append(metadata);
 
@@ -169,7 +172,31 @@ function createTaskCard(task, index) {
     if (task.plan.length) {
       details.append(makeElement("h4", "detail-label", "計画"));
       const plan = document.createElement("ol");
-      task.plan.forEach((step) => plan.append(makeElement("li", "", step)));
+      task.plan.forEach((plannedStep) => {
+        const step = typeof plannedStep === "string" ? { step: plannedStep } : plannedStep;
+        const completion = task.completed_steps.find((item) =>
+          (typeof item === "string" ? item : item.step) === step.step
+        );
+        const row = makeElement("li", "plan-step");
+        row.append(makeElement("strong", "", `${completion ? "完了" : "未完了"}: ${step.step}`));
+        if (step.acceptance_criteria) {
+          row.append(makeElement("p", "finding-excerpt", `達成条件: ${step.acceptance_criteria}`));
+        }
+        if (completion?.justification) {
+          row.append(makeElement("p", "finding-excerpt", `根拠: ${completion.justification}`));
+        }
+        if (completion?.evidence_ids?.length) {
+          const sources = completion.evidence_ids
+            .map((id) => task.findings[id])
+            .filter(Boolean)
+            .map((finding) => finding.url || finding.path || finding.title)
+            .filter(Boolean);
+          if (sources.length) {
+            row.append(makeElement("p", "finding-excerpt", `参照した保存済み根拠: ${sources.join("、 ")}`));
+          }
+        }
+        plan.append(row);
+      });
       details.append(plan);
     }
     if (task.findings.length) {

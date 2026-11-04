@@ -81,8 +81,8 @@ class TaskStoreTests(unittest.TestCase):
         recovered = self.store.get(task["id"])
 
         self.assertEqual(recovered_count, 1)
-        self.assertEqual(recovered["status"], "paused")
-        self.assertIn("再起動", recovered["next_action"])
+        self.assertEqual(recovered["status"], "pending")
+        self.assertIn("自動再開", recovered["next_action"])
         self.assertEqual(recovered["events"][0]["kind"], "recovered")
 
     def test_invalid_transition_is_rejected(self):

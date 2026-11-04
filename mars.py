@@ -286,10 +286,10 @@ class TaskStore:
             ).fetchall()
             for row in rows:
                 connection.execute(
-                    "UPDATE tasks SET status = 'paused', next_action = ?, updated_at = ? WHERE id = ?",
-                    ("サーバー再起動後の確認待ち。再開すると未完了の作業から続けます", timestamp, row["id"]),
+                    "UPDATE tasks SET status = 'pending', next_action = ?, updated_at = ? WHERE id = ?",
+                    ("中断前のチェックポイントから安全に自動再開します", timestamp, row["id"]),
                 )
-                self._event(connection, row["id"], "recovered", "再起動を検出し、安全のため一時停止しました")
+                self._event(connection, row["id"], "recovered", "再起動後、読み取り専用の作業をチェックポイントから再開します")
         return len(rows)
 
     def create_memory(self, category, title, content):
