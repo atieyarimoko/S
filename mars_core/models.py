@@ -1,0 +1,108 @@
+import json
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+
+
+DEFAULT_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions"
+
+
+class ModelError(RuntimeError):
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class OpenAICompatibleProvider:
+    def __init__(self, endpoint, model, api_key="", timeout=90):
+        parsed = urllib.parse.urlparse(endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("モデルURLは認証情報を含まないHTTP(S) URLにしてください")
+        self.endpoint = endpoint.rstrip("/")
+        if not self.endpoint.endswith("/chat/completions"):
+            self.endpoint += "/chat/completions"
+        self.model = model
+        self.api_key = api_key
+        self.timeout = timeout
+
+    def complete(self, system, prompt):
+        body = json.dumps(
+            {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.2,
+                "stream": False,
+            }
+        ).encode("utf-8")
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        request = urllib.request.Request(self.endpoint, data=body, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                if response.status != 200:
+                    raise ModelError(f"モデル接続がHTTP {response.status}を返しました")
+                data = response.read(2 * 1024 * 1024 + 1)
+            if len(data) > 2 * 1024 * 1024:
+                raise ModelError("モデル応答が上限サイズを超えました")
+            payload = json.loads(data)
+            content = payload["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise ModelError("モデルから空の応答が返りました")
+            return content.strip()
+        except urllib.error.HTTPError as error:
+            retry_after = None
+            if error.code == 429:
+                retry_header = error.headers.get("Retry-After", "")
+                retry_after = int(retry_header) if retry_header.isdigit() else 900
+            raise ModelError(f"モデル接続がHTTP {error.code}を返しました", retry_after) from error
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            raise ModelError(f"モデルに接続できません: {error}") from error
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+            raise ModelError("モデル応答の形式を読み取れません") from error
+
+
+def configured_provider(environ=None):
+    values = os.environ if environ is None else environ
+    model = values.get("MARS_MODEL", "").strip()
+    if not model:
+        return None, "MARS_MODELが未設定です"
+    endpoint = values.get("MARS_MODEL_URL", DEFAULT_ENDPOINT).strip()
+    parsed = urllib.parse.urlparse(endpoint)
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    if parsed.hostname not in local_hosts and values.get("MARS_ALLOW_REMOTE_MODEL") != "1":
+        return None, "外部モデルへの送信は MARS_ALLOW_REMOTE_MODEL=1 の明示許可が必要です"
+    try:
+        timeout = max(5, min(int(values.get("MARS_MODEL_TIMEOUT", "90")), 120))
+        provider = OpenAICompatibleProvider(
+            endpoint,
+            model,
+            values.get("MARS_MODEL_API_KEY", ""),
+            timeout,
+        )
+    except (ValueError, TypeError):
+        return None, "モデルURLまたはタイムアウト設定が不正です"
+    return provider, model
+
+
+def parse_json_object(text):
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+    decoder = json.JSONDecoder()
+    for offset, character in enumerate(cleaned):
+        if character != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(cleaned[offset:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise ModelError("モデル応答に有効なJSONオブジェクトがありません")

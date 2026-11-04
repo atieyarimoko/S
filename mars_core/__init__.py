@@ -1,0 +1,1 @@
+"""Core adapters and autonomous task execution for Mars."""

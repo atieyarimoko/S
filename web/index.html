@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f5">
+  <title>Mars | タスク管理</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="メインナビゲーション">
+      <a class="brand" href="/" aria-label="Mars ホーム">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span class="brand-name">mars<span class="brand-period">.</span></span>
+      </a>
+      <div class="workspace-label">PERSONAL WORKSPACE</div>
+      <nav class="primary-nav">
+        <a class="nav-link is-active" href="#tasks" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">▤</span><span>タスク</span>
+        </a>
+        <a class="nav-link" href="#activity">
+          <span class="nav-icon" aria-hidden="true">◷</span><span>実行履歴</span>
+        </a>
+        <a class="nav-link" href="#memories">
+          <span class="nav-icon" aria-hidden="true">▧</span><span>記憶</span>
+        </a>
+        <a class="nav-link" href="#chat">
+          <span class="nav-icon" aria-hidden="true">✉</span><span>チャット</span>
+        </a>
+        <a class="nav-link" href="#files">
+          <span class="nav-icon" aria-hidden="true">▣</span><span>ファイル</span>
+        </a>
+        <a class="nav-link" href="#settings">
+          <span class="nav-icon" aria-hidden="true">⚙</span><span>設定</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="runtime-card">
+          <span class="runtime-dot" aria-hidden="true"></span>
+          <div><strong>ローカル保存</strong><small>この端末のデータベース</small></div>
+        </div>
+        <div class="sidebar-foot">Mars <span>v0.2 · Phase 1-4</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="tasks">
+      <header class="topbar">
+        <div class="breadcrumbs"><span>ワークスペース</span><span class="crumb-slash">/</span><strong>タスク</strong></div>
+        <div class="topbar-right">
+          <span class="engine-label" aria-live="polite"><span class="engine-dot"></span>状態を確認中</span>
+          <button class="task-action logout-button" id="logout-button" type="button" hidden>ログアウト</button>
+        </div>
+      </header>
+
+      <div class="page-wrap">
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">YOUR WORK, IN ORBIT</p>
+            <h1>タスク</h1>
+            <p class="heading-copy">目標を記録して、次の一歩を整理する。</p>
+          </div>
+          <div class="date-stamp" id="today"></div>
+        </section>
+
+        <section class="task-section chat-section" id="chat" aria-labelledby="chat-title">
+          <div class="section-heading">
+            <div class="section-title-group"><div><p class="eyebrow">MARS ASSISTANT</p><h2 id="chat-title">チャット</h2></div></div>
+            <span class="chat-model" id="chat-model">モデル状態を確認中</span>
+          </div>
+          <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+          <div class="chat-attachments" id="chat-attachments" aria-live="polite"></div>
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-input">Marsへのメッセージ</label>
+            <textarea id="chat-input" maxlength="10000" rows="2" placeholder="メッセージを入力してください" required></textarea>
+            <button class="button-primary" type="submit">送信</button>
+          </form>
+          <p class="chat-note">保存済みの関連記憶を回答の参考にします。添付テキストは各ファイルの先頭20,000文字までモデルに送信します。</p>
+        </section>
+
+        <section class="notice" role="status">
+          <span class="notice-symbol" aria-hidden="true">i</span>
+          <p>タスクを保存し、設定済みモデルで計画・検索・公開HTTPSページの調査を行います。</p>
+          <span class="notice-phase">PHASE 1-4</span>
+        </section>
+
+        <section class="task-composer" aria-labelledby="new-task-title">
+          <div class="composer-heading">
+            <span class="composer-index">01</span>
+            <div><h2 id="new-task-title">新しい目標</h2><p>やりたいことを大まかに書いてください。</p></div>
+          </div>
+          <form id="task-form">
+            <label class="field-label" for="task-title">タスク名</label>
+            <input id="task-title" name="title" maxlength="120" placeholder="例：来月の旅行先を比較する" required>
+            <div class="form-row">
+              <div class="goal-field">
+                <label class="field-label" for="task-goal">目的・完了条件</label>
+                <textarea id="task-goal" name="goal" maxlength="10000" rows="3" placeholder="何を調べ、どんな結果がほしいか" required></textarea>
+              </div>
+              <div class="priority-field">
+                <label class="field-label" for="task-priority">優先度</label>
+                <select id="task-priority" name="priority">
+                  <option value="5">最優先</option>
+                  <option value="4">高</option>
+                  <option value="3" selected>通常</option>
+                  <option value="2">低</option>
+                  <option value="1">最低</option>
+                </select>
+              </div>
+            </div>
+            <div class="composer-footer">
+              <span class="save-hint"><span class="save-check" aria-hidden="true">✓</span>入力内容はこの端末に保存されます</span>
+              <button class="button-primary" type="submit"><span aria-hidden="true">＋</span> タスクを保存</button>
+            </div>
+            <p class="form-error" id="form-error" role="alert" hidden></p>
+          </form>
+        </section>
+
+        <section class="task-section file-section" id="files" aria-labelledby="files-title">
+          <div class="section-heading">
+            <div class="section-title-group"><div><p class="eyebrow">LOCAL DOCUMENTS</p><h2 id="files-title">ファイル</h2></div></div>
+            <div class="file-tools">
+              <label class="sr-only" for="file-search">ファイルを検索</label>
+              <input id="file-search" type="search" maxlength="200" placeholder="保存ファイル内を検索">
+              <label class="task-action file-import-label" for="file-import">ファイルを取り込む</label>
+              <input id="file-import" type="file" accept=".txt,.md,.csv,.json,.log,.pdf,.docx,.xlsx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
+              <button id="folder-create" class="task-action" type="button">フォルダーを作成</button>
+            </div>
+          </div>
+          <p class="file-location">保存先: <code>data/files/</code> · TXT / MD / CSV / JSON / LOG（1 MB）、PDF / DOCX / XLSX（20 MB）。既存ファイルを上書きせず取り込めます。</p>
+          <div class="file-browser">
+            <div class="file-breadcrumb" id="file-breadcrumb"></div>
+            <div class="file-list" id="file-list" aria-live="polite"></div>
+          </div>
+          <form id="file-form" class="memory-form">
+            <div class="composer-heading">
+              <span class="composer-index">03</span>
+              <div><h3 id="file-form-title">ファイルを作成</h3><p>相対パスで指定してください。保存済みファイルの編集もできます。</p></div>
+            </div>
+            <label><span class="field-label">パス</span><input id="file-path" maxlength="240" placeholder="例: notes/summary.md" required></label>
+            <label class="memory-content-label"><span class="field-label">内容</span>
+              <textarea id="file-content" maxlength="1000000" rows="6" required></textarea>
+            </label>
+            <div class="composer-footer"><button class="button-primary" type="submit">ファイルを保存</button></div>
+            <p class="form-error" id="file-error" role="alert" hidden></p>
+          </form>
+        </section>
+
+        <section class="task-section" id="activity" aria-labelledby="task-list-title">
+          <div class="section-heading">
+            <div class="section-title-group"><div><p class="eyebrow">TASK QUEUE</p><h2 id="task-list-title">あなたのタスク</h2></div><span class="task-count" id="task-count">0</span></div>
+            <label class="filter-wrap"><span class="sr-only">タスク状態で絞り込む</span>
+              <select id="status-filter" aria-label="状態で絞り込む">
+                <option value="all">すべての状態</option>
+                <option value="pending">未着手</option>
+                <option value="planning">計画中</option>
+                <option value="running">実行中</option>
+                <option value="waiting">待機中</option>
+                <option value="paused">一時停止</option>
+                <option value="failed">失敗</option>
+                <option value="completed">完了</option>
+              </select>
+            </label>
+          </div>
+          <div class="task-list" id="task-list" aria-live="polite"></div>
+        </section>
+
+        <section class="task-section" id="memories" aria-labelledby="memory-list-title">
+          <div class="section-heading">
+            <div class="section-title-group"><div><p class="eyebrow">PERSONAL KNOWLEDGE</p><h2 id="memory-list-title">記憶</h2></div><span class="task-count" id="memory-count">0</span></div>
+            <div class="memory-tools">
+              <label class="sr-only" for="memory-search">記憶を検索</label>
+              <input id="memory-search" type="search" maxlength="200" placeholder="記憶を検索">
+              <label class="sr-only" for="memory-filter">分類で絞り込む</label>
+              <select id="memory-filter">
+                <option value="all">すべての分類</option>
+                <option value="short_term">短期記憶</option>
+                <option value="long_term">長期記憶</option>
+                <option value="working">作業記憶</option>
+                <option value="project">プロジェクト</option>
+                <option value="knowledge">知識ベース</option>
+              </select>
+            </div>
+          </div>
+          <form id="memory-form" class="memory-form">
+            <div class="composer-heading">
+              <span class="composer-index">02</span>
+              <div><h3 id="memory-form-title">記憶を追加</h3><p>記憶はこの端末のデータベースに保存されます。</p></div>
+            </div>
+            <div class="memory-form-grid">
+              <label><span class="field-label">分類</span>
+                <select id="memory-category" required>
+                  <option value="short_term">短期記憶</option>
+                  <option value="long_term">長期記憶</option>
+                  <option value="working">作業記憶</option>
+                  <option value="project">プロジェクト</option>
+                  <option value="knowledge">知識ベース</option>
+                </select>
+              </label>
+              <label><span class="field-label">タイトル</span>
+                <input id="memory-title" maxlength="120" required>
+              </label>
+            </div>
+            <label class="memory-content-label"><span class="field-label">内容</span>
+              <textarea id="memory-content" maxlength="10000" rows="3" required></textarea>
+            </label>
+            <div class="composer-footer">
+              <button id="memory-cancel" class="task-action" type="button" hidden>編集をキャンセル</button>
+              <button class="button-primary" type="submit">記憶を保存</button>
+            </div>
+            <p class="form-error" id="memory-error" role="alert" hidden></p>
+          </form>
+          <div class="memory-list" id="memory-list" aria-live="polite"></div>
+        </section>
+        <section class="task-section settings-section" id="settings" aria-labelledby="settings-title">
+          <div class="section-title-group"><div><p class="eyebrow">PRIVACY & CONFIGURATION</p><h2 id="settings-title">設定と安全性</h2></div></div>
+          <div class="settings-grid">
+            <article class="settings-card">
+              <h3>モデル接続</h3>
+              <p id="settings-model">環境変数で設定します。APIキーを画面やデータベースには保存しません。</p>
+              <p>外部モデルを使う場合、会話・依頼内容・関連記憶がモデル提供者へ送信されます。外部接続には明示的な設定が必要です。</p>
+            </article>
+            <article class="settings-card">
+              <h3>アクセス保護</h3>
+              <p id="auth-status">認証状態を確認中</p>
+              <p><code>MARS_PASSWORD</code> に12文字以上を設定するとログイン保護が有効になります。未設定時もサーバーはこの端末内だけで待ち受けます。</p>
+            </article>
+            <article class="settings-card">
+              <h3>データとバックアップ</h3>
+              <p>会話・タスク・記憶をSQLiteに保存します。ファイルは <code>data/files/</code> 以下に保存します。</p>
+              <p>完全バックアップにはDBとファイル領域が含まれます。復元時は両方を置き換え、復元前の完全バックアップを自動退避します。</p>
+            </article>
+          </div>
+        </section>
+        <footer class="page-footer">
+          <span>MARS / PRIVATE TASK SPACE</span>
+          <span>データは <code>data/mars.sqlite3</code> に保存</span>
+          <a class="backup-link" href="/api/backup/full">完全バックアップをダウンロード</a>
+          <label class="backup-restore-label" for="backup-restore">バックアップを復元</label>
+          <input id="backup-restore" type="file" accept=".zip,.sqlite3,application/zip,application/vnd.sqlite3" hidden>
+        </footer>
+      </div>
+    </main>
+  </div>
+  <dialog id="document-preview" class="document-preview">
+    <div class="document-preview-heading">
+      <h2 id="document-preview-title">文書の内容</h2>
+      <button id="document-preview-close" class="task-action" type="button">閉じる</button>
+    </div>
+    <pre id="document-preview-content"></pre>
+    <p class="file-location">これは抽出されたテキストです。レイアウト・数式の再計算・スキャン画像のOCRには対応していません。</p>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <section class="login-overlay" id="login-overlay" hidden aria-labelledby="login-title">
+    <form class="login-card" id="login-form">
+      <span class="brand-mark" aria-hidden="true">M</span>
+      <h1 id="login-title">Marsにログイン</h1>
+      <p>設定したパスワードを入力してください。</p>
+      <label class="field-label" for="login-password">パスワード</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+      <p class="form-error" id="login-error" role="alert" hidden></p>
+      <button class="button-primary" type="submit">ログイン</button>
+    </form>
+  </section>
+</body>
+</html>
