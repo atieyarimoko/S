@@ -1,3 +1,4 @@
+import base64
 import json
 import socket
 import threading
@@ -66,6 +67,46 @@ class ModelAdapterTests(unittest.TestCase):
         self.assertEqual(response, "ok")
         self.assertEqual(received["body"]["model"], "tiny-model")
         self.assertEqual(received["auth"], "Bearer secret")
+
+
+    def test_openai_compatible_request_includes_multimodal_images(self):
+        received = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                response = json.dumps({"choices": [{"message": {"content": "visual response"}}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, format_string, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            provider = OpenAICompatibleProvider(f"http://127.0.0.1:{server.server_port}/v1", "vision-model")
+            answer = provider.complete_with_images(
+                "system",
+                "Describe the input.",
+                [{"label": "image.png", "data": b"image bytes", "mime_type": "image/png"}],
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+        content = received["body"]["messages"][1]["content"]
+        self.assertEqual(answer, "visual response")
+        self.assertEqual(content[0], {"type": "text", "text": "Describe the input."})
+        self.assertEqual(
+            content[1]["image_url"]["url"],
+            "data:image/png;base64," + base64.b64encode(b"image bytes").decode("ascii"),
+        )
 
 
 class ResearchAdapterTests(unittest.TestCase):

@@ -160,14 +160,23 @@ input:focus, textarea:focus, select:focus { border-color: #64a38f; box-shadow: 0
 .chat-assistant { align-self: flex-start; background: #fff; }
 .chat-role { display: block; color: #61716a; font-size: 9px; }
 .chat-content { margin: 3px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.chat-frame-note { margin: 5px 0 0; color: #60766c; font-size: 9px; overflow-wrap: anywhere; }
 .chat-empty, .chat-thinking, .chat-note { margin: 0; color: var(--muted); font-size: 9px; }
 .chat-attachments { display: flex; flex-wrap: wrap; gap: 5px; }
+.chat-media-label { display: inline-flex; min-height: 28px; align-items: center; margin: 4px 0; cursor: pointer; }
+.chat-media-preview { display: grid; width: min(220px, 100%); gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); }
+.chat-media-preview img, .chat-media-preview video { width: 100%; max-height: 140px; border-radius: 3px; object-fit: contain; background: #17201d; }
+.chat-media-name { overflow-wrap: anywhere; color: var(--muted); font-size: 9px; }
 .chat-attachment { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border-radius: 10px; color: #426d5d; background: var(--green-soft); font-size: 9px; overflow-wrap: anywhere; }
 .chat-attachment button { padding: 0 2px; border: 0; color: inherit; background: transparent; font-size: 13px; }
 .chat-form { display: flex; align-items: flex-end; gap: 8px; border-top: 1px solid #edf0ee; padding-top: 10px; }
 .chat-form textarea { min-height: 42px; max-height: 130px; font-size: 10px; }
 .chat-form button { min-height: 36px; }
 .chat-note { margin-top: 7px; }
+.chat-message-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.task-media-field { display: block; margin-top: 14px; }
+.task-media-field select { min-height: 70px; padding: 6px; font-size: 10px; }
+.media-preview img, .media-preview video { display: block; max-width: 100%; max-height: 70vh; margin: 12px auto 0; object-fit: contain; }
 .file-tools { display: flex; min-width: min(100%, 380px); gap: 7px; }
 .file-tools input { min-width: 0; height: 32px; font-size: 10px; }
 .file-tools button { flex: 0 0 auto; }
@@ -273,6 +282,10 @@ input:focus, textarea:focus, select:focus { border-color: #64a38f; box-shadow: 0
   .file-size { grid-column: 1; }
   .file-actions { grid-column: 2; grid-row: 1 / span 2; flex-direction: column; }
   .chat-section { padding: 14px 11px; }
+  .chat-message { max-width: 96%; }
+  .chat-form { align-items: stretch; flex-direction: column; }
+  .chat-form button { align-self: flex-end; }
+  .chat-media-preview { width: min(180px, 100%); }
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
   .page-footer { gap: 10px; font-size: 7px; }
 }

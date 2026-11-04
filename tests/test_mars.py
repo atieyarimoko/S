@@ -15,6 +15,7 @@ from http.server import ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
+from PIL import Image
 
 from mars import LocalFileStore, MarsHandler, TaskStore
 
@@ -55,6 +56,21 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(resumed["status"], "pending")
         self.assertEqual(resumed["retry_count"], 0)
         self.assertEqual(len(resumed["events"]), 5)
+
+    def test_resuming_failed_task_retries_failed_media_analysis(self):
+        task = self.store.create("メディア再試行", "失敗後に再実行", 3, ["image.png"])
+        active = self.store.claim_next()
+        self.store.checkpoint(
+            task["id"],
+            {
+                "status": "failed",
+                "findings": [{"type": "media", "path": "image.png", "status": "failed", "error": "temporary"}],
+            },
+        )
+
+        resumed = self.store.transition(active["id"], "pending")
+
+        self.assertEqual(resumed["findings"], [{"type": "media", "path": "image.png", "status": "pending"}])
 
     def test_recover_interrupted_work(self):
         task = self.store.create("中断", "復旧すること", 3)
@@ -381,6 +397,77 @@ class TaskApiTests(unittest.TestCase):
         self.assertIn("未設定", payload["error"])
         self.assertNotIn("message_saved", payload)
         error.exception.close()
+
+    def test_chat_sends_attached_image_to_multimodal_provider(self):
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (24, 16), "red").save(image_buffer, format="PNG")
+
+        class VisualProvider:
+            def __init__(self):
+                self.images = None
+
+            def complete_with_images(self, system, prompt, images):
+                self.images = images
+                return "赤い画像を確認しました。"
+
+        handler = self.server.RequestHandlerClass
+        provider = VisualProvider()
+        handler.provider = provider
+        handler.files.import_file("picture.png", image_buffer.getvalue())
+        payload = json.dumps({
+            "message": "この画像を説明して",
+            "media": ["picture.png"],
+        }).encode()
+        request = Request(self.base_url + "/api/chat", data=payload, headers={"Content-Type": "application/json"})
+
+        with urlopen(request) as response:
+            answer = json.load(response)["message"]["content"]
+
+        self.assertIn("赤い", answer)
+        self.assertEqual(provider.images[0]["label"], "picture.png")
+        self.assertEqual(provider.images[0]["mime_type"], "image/png")
+        self.assertIn("picture.png", handler.store.chat_history()[-2]["content"])
+
+    def test_media_import_is_validated_private_and_listed_for_tasks(self):
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (12, 12), "green").save(image_buffer, format="PNG")
+        payload = json.dumps({
+            "action": "import",
+            "path": "media/green.png",
+            "content_base64": base64.b64encode(image_buffer.getvalue()).decode("ascii"),
+        }).encode()
+        request = Request(self.base_url + "/api/files", data=payload, headers={"Content-Type": "application/json"})
+        with urlopen(request) as response:
+            imported = json.load(response)["file"]
+
+        with urlopen(self.base_url + "/api/files/media") as response:
+            media = json.load(response)["files"]
+
+        self.assertEqual(imported["path"], "media/green.png")
+        self.assertEqual(media[0]["media_type"], "image")
+        self.assertEqual(media[0]["path"], "media/green.png")
+        with urlopen(self.base_url + "/api/backup/full") as response:
+            with zipfile.ZipFile(io.BytesIO(response.read())) as archive:
+                self.assertEqual(archive.read("files/media/green.png"), image_buffer.getvalue())
+        if os.name == "posix":
+            stored = self.server.RequestHandlerClass.files.root / "media" / "green.png"
+            self.assertEqual(stat.S_IMODE(stored.stat().st_mode), 0o600)
+
+    def test_create_task_persists_selected_media_for_analysis(self):
+        image_buffer = io.BytesIO()
+        Image.new("RGB", (10, 10), "blue").save(image_buffer, format="PNG")
+        self.server.RequestHandlerClass.files.import_file("input.png", image_buffer.getvalue())
+        payload = json.dumps({
+            "title": "画像を分析",
+            "goal": "画像の内容を確認",
+            "media": ["input.png"],
+        }).encode()
+        request = Request(self.base_url + "/api/tasks", data=payload, headers={"Content-Type": "application/json"})
+
+        with urlopen(request) as response:
+            task = json.load(response)["task"]
+
+        self.assertEqual(task["findings"], [{"type": "media", "path": "input.png", "status": "pending"}])
 
     def test_file_api_saves_lists_reads_downloads_and_confirms_deletion(self):
         body = json.dumps({"action": "save", "path": "notes/test.md", "content": "Mars note"}).encode()

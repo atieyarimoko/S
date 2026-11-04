@@ -71,12 +71,14 @@
           </div>
           <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
           <div class="chat-attachments" id="chat-attachments" aria-live="polite"></div>
+          <label class="chat-media-label task-action" for="chat-media-input">画像・動画を添付</label>
+          <input id="chat-media-input" type="file" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" multiple hidden>
           <form id="chat-form" class="chat-form">
             <label class="sr-only" for="chat-input">Marsへのメッセージ</label>
             <textarea id="chat-input" maxlength="10000" rows="2" placeholder="メッセージを入力してください" required></textarea>
             <button class="button-primary" type="submit">送信</button>
           </form>
-          <p class="chat-note">保存済みの関連記憶を回答の参考にします。添付テキストは各ファイルの先頭20,000文字までモデルに送信します。</p>
+          <p class="chat-note">画像・動画はローカルで検証し、設定済みの画像対応モデルに送信します。動画は時間情報付きの複数フレームを解析します。</p>
         </section>
 
         <section class="notice" role="status">
@@ -109,6 +111,11 @@
                 </select>
               </div>
             </div>
+            <label class="task-media-field" for="task-media-files">
+              <span class="field-label">分析する画像・動画（任意）</span>
+              <select id="task-media-files" multiple size="3" aria-describedby="task-media-hint"></select>
+            </label>
+            <p class="file-location" id="task-media-hint">ファイル管理に保存済みの画像・動画を選ぶと、タスク開始時に分析し、結果をタスクの作業記録へ保存します。</p>
             <div class="composer-footer">
               <span class="save-hint"><span class="save-check" aria-hidden="true">✓</span>入力内容はこの端末に保存されます</span>
               <button class="button-primary" type="submit"><span aria-hidden="true">＋</span> タスクを保存</button>
@@ -124,11 +131,11 @@
               <label class="sr-only" for="file-search">ファイルを検索</label>
               <input id="file-search" type="search" maxlength="200" placeholder="保存ファイル内を検索">
               <label class="task-action file-import-label" for="file-import">ファイルを取り込む</label>
-              <input id="file-import" type="file" accept=".txt,.md,.csv,.json,.log,.pdf,.docx,.xlsx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
+              <input id="file-import" type="file" accept=".txt,.md,.csv,.json,.log,.pdf,.docx,.xlsx,.png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" multiple hidden>
               <button id="folder-create" class="task-action" type="button">フォルダーを作成</button>
             </div>
           </div>
-          <p class="file-location">保存先: <code>data/files/</code> · TXT / MD / CSV / JSON / LOG（1 MB）、PDF / DOCX / XLSX（20 MB）。既存ファイルを上書きせず取り込めます。</p>
+          <p class="file-location">保存先: <code>data/files/</code> · TXT / MD / CSV / JSON / LOG（1 MB）、PDF / DOCX / XLSX（20 MB）、画像（12 MB）・動画（25 MB）。既存ファイルを上書きせず取り込めます。</p>
           <div class="file-browser">
             <div class="file-breadcrumb" id="file-breadcrumb"></div>
             <div class="file-list" id="file-list" aria-live="polite"></div>
@@ -250,6 +257,13 @@
     </div>
     <pre id="document-preview-content"></pre>
     <p class="file-location">これは抽出されたテキストです。レイアウト・数式の再計算・スキャン画像のOCRには対応していません。</p>
+  </dialog>
+  <dialog id="media-preview" class="document-preview media-preview">
+    <div class="document-preview-heading">
+      <h2 id="media-preview-title"></h2>
+      <button id="media-preview-close" class="task-action" type="button">閉じる</button>
+    </div>
+    <div id="media-preview-content"></div>
   </dialog>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <section class="login-overlay" id="login-overlay" hidden aria-labelledby="login-title">

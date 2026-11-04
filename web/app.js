@@ -23,6 +23,8 @@ const memoryCancel = document.querySelector("#memory-cancel");
 const chatForm = document.querySelector("#chat-form");
 const chatMessages = document.querySelector("#chat-messages");
 const chatInput = document.querySelector("#chat-input");
+const chatMediaInput = document.querySelector("#chat-media-input");
+const taskMediaFiles = document.querySelector("#task-media-files");
 const fileForm = document.querySelector("#file-form");
 const fileList = document.querySelector("#file-list");
 const fileSearch = document.querySelector("#file-search");
@@ -42,6 +44,7 @@ let editingMemoryId = null;
 let currentFolder = "";
 let appReady = false;
 const selectedChatFiles = new Set();
+const selectedChatMedia = new Set();
 const memoryCategories = {
   short_term: "短期記憶",
   long_term: "長期記憶",
@@ -174,7 +177,16 @@ function createTaskCard(task, index) {
       const findings = makeElement("div", "finding-list");
       task.findings.forEach((finding) => {
         const item = makeElement("div", "finding-item");
-        if (finding.type === "search") {
+        if (finding.type === "media") {
+          item.append(makeElement("strong", "", `画像・動画: ${finding.path}`));
+          if (finding.status === "analyzed") {
+            item.append(makeElement("p", "finding-excerpt", finding.analysis));
+          } else if (finding.status === "failed") {
+            item.append(makeElement("p", "error-entry", `分析できませんでした: ${finding.error}`));
+          } else {
+            item.append(makeElement("p", "finding-excerpt", "分析待ち。タスクを再開すると処理します。"));
+          }
+        } else if (finding.type === "search") {
           item.append(makeElement("strong", "", `検索: ${finding.query}`));
           if (finding.results?.length) {
             const results = document.createElement("ul");
@@ -352,6 +364,39 @@ function renderChatMessage(message) {
     makeElement("strong", "chat-role", message.role === "user" ? "あなた" : "Mars"),
     makeElement("p", "chat-content", message.content),
   );
+  if (message.role === "assistant" && message.media_frames?.length) {
+    article.append(makeElement("p", "chat-frame-note", `分析した動画フレーム: ${message.media_frames.join(" / ")}`));
+  }
+  if (message.role === "assistant") {
+    const actions = makeElement("div", "chat-message-actions");
+    const useInTask = makeElement("button", "task-action", "タスクの目的に使う");
+    useInTask.type = "button";
+    useInTask.addEventListener("click", () => {
+      document.querySelector("#task-goal").value =
+        `このチャットの画像・動画分析結果を根拠に、必要な追加調査を行ってください。\n\n${message.content.slice(0, 9000)}`;
+      document.querySelector("#task-goal").scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector("#task-goal").focus();
+    });
+    const saveMemory = makeElement("button", "task-action", "記憶に保存");
+    saveMemory.type = "button";
+    saveMemory.addEventListener("click", async () => {
+      const defaultTitle = `チャット分析 ${new Date().toLocaleDateString("ja-JP")}`;
+      const title = window.prompt("記憶のタイトル", defaultTitle);
+      if (title === null) return;
+      try {
+        await request("/api/memories", {
+          method: "POST",
+          body: JSON.stringify({ category: "knowledge", title, content: message.content.slice(0, 10000) }),
+        });
+        await loadMemories();
+        showToast("分析結果を記憶に保存しました");
+      } catch (error) {
+        showToast(error.message);
+      }
+    });
+    actions.append(useInTask, saveMemory);
+    article.append(actions);
+  }
   return article;
 }
 
@@ -389,6 +434,28 @@ function renderFileEntry(entry) {
       loadFiles().catch((error) => showToast(error.message));
     });
     actions.append(open);
+  } else if (entry.media) {
+    const preview = makeElement("button", "task-action", "プレビュー");
+    preview.type = "button";
+    preview.addEventListener("click", () => openMediaPreview(entry));
+    const download = makeElement("a", "task-action file-download", "ダウンロード");
+    download.href = `/api/files/download?${new URLSearchParams({ path: entry.path })}`;
+    const attach = makeElement(
+      "button",
+      "task-action",
+      selectedChatMedia.has(entry.path) ? "チャットに添付中" : "チャットに添付",
+    );
+    attach.type = "button";
+    attach.addEventListener("click", () => {
+      if (selectedChatMedia.has(entry.path)) selectedChatMedia.delete(entry.path);
+      else if (selectedChatFiles.size + selectedChatMedia.size >= 3) {
+        showToast("文書・画像・動画を合わせて3件まで添付できます");
+        return;
+      } else selectedChatMedia.add(entry.path);
+      renderChatAttachments();
+      loadFiles().catch((error) => showToast(error.message));
+    });
+    actions.append(preview, download, attach);
   } else if (entry.readable) {
     const open = makeElement("button", "task-action", entry.supported ? "開く・編集" : "内容を表示");
     open.type = "button";
@@ -412,8 +479,8 @@ function renderFileEntry(entry) {
     attach.type = "button";
     attach.addEventListener("click", () => {
       if (selectedChatFiles.has(entry.path)) selectedChatFiles.delete(entry.path);
-      else if (selectedChatFiles.size >= 3) {
-        showToast("一度に添付できるファイルは3件までです");
+      else if (selectedChatFiles.size + selectedChatMedia.size >= 3) {
+        showToast("文書・画像・動画を合わせて3件まで添付できます");
         return;
       } else selectedChatFiles.add(entry.path);
       renderChatAttachments();
@@ -487,6 +554,25 @@ async function loadFiles() {
   entries.forEach((entry) => fileList.append(renderFileEntry(entry)));
 }
 
+async function loadTaskMediaOptions() {
+  const result = await request("/api/files/media");
+  taskMediaFiles.replaceChildren();
+  result.files.forEach((file) => {
+    const option = makeElement(
+      "option",
+      "",
+      `${file.media_type === "video" ? "動画" : "画像"} · ${file.path} (${Math.ceil(file.size / 1024)} KB)`,
+    );
+    option.value = file.path;
+    taskMediaFiles.append(option);
+  });
+  if (!result.files.length) {
+    const option = makeElement("option", "", "保存済みの画像・動画はありません");
+    option.disabled = true;
+    taskMediaFiles.append(option);
+  }
+}
+
 function renderChatAttachments() {
   const container = document.querySelector("#chat-attachments");
   container.replaceChildren();
@@ -503,7 +589,62 @@ function renderChatAttachments() {
     chip.append(remove);
     container.append(chip);
   }
+  for (const path of selectedChatMedia) {
+    const preview = makeElement("div", "chat-media-preview");
+    const source = `/api/files/download?${new URLSearchParams({ path })}`;
+    if (/\.(mp4|mov|webm)$/i.test(path)) {
+      const video = document.createElement("video");
+      video.src = source;
+      video.controls = true;
+      video.preload = "metadata";
+      video.setAttribute("aria-label", path);
+      preview.append(video);
+    } else {
+      const image = document.createElement("img");
+      image.src = source;
+      image.alt = path;
+      preview.append(image);
+    }
+    preview.append(makeElement("span", "chat-media-name", path));
+    const remove = makeElement("button", "task-action", "外す");
+    remove.type = "button";
+    remove.addEventListener("click", () => {
+      selectedChatMedia.delete(path);
+      renderChatAttachments();
+      loadFiles().catch((error) => showToast(error.message));
+    });
+    preview.append(remove);
+    container.append(preview);
+  }
 }
+
+function openMediaPreview(entry) {
+  const dialog = document.querySelector("#media-preview");
+  const content = document.querySelector("#media-preview-content");
+  const source = `/api/files/download?${new URLSearchParams({ path: entry.path })}`;
+  document.querySelector("#media-preview-title").textContent = entry.name;
+  content.replaceChildren();
+  if (/\.(mp4|mov|webm)$/i.test(entry.path)) {
+    const video = document.createElement("video");
+    video.src = source;
+    video.controls = true;
+    video.preload = "metadata";
+    content.append(video);
+  } else {
+    const image = document.createElement("img");
+    image.src = source;
+    image.alt = entry.name;
+    content.append(image);
+  }
+  dialog.showModal();
+}
+
+document.querySelector("#media-preview-close").addEventListener("click", () => {
+  document.querySelector("#media-preview").close();
+});
+document.querySelector("#media-preview").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
 
 async function refreshHealth() {
   const health = await request("/api/health");
@@ -514,10 +655,10 @@ async function refreshHealth() {
     ? `${health.model_remote ? "外部" : "ローカル"}モデル「${health.model}」を設定中です。APIキーを画面やデータベースには保存しません。`
     : "モデルは未設定です。環境変数で設定します。APIキーを画面やデータベースには保存しません。";
   document.querySelector(".chat-note").textContent = health.model_remote
-    ? "会話・添付ファイル（文書の抽出テキストを含む）・関連記憶は外部モデルへ送信されます。機密情報を入力・添付しないでください。"
+    ? "会話・添付ファイル・画像および動画から抽出したフレーム・関連記憶は外部モデルへ送信されます。機密情報を入力・添付しないでください。"
     : active
-      ? "会話・添付ファイル（文書の抽出テキストを含む）・関連記憶をローカルモデルに渡します。内容は外部モデルへ送信されません。"
-      : "モデル未設定時は会話を送信できません。ファイル添付内容はモデル設定後に送信されます。";
+      ? "会話・添付ファイル・画像および動画から抽出したフレーム・関連記憶を設定済みモデルに渡します。ローカルモデルなら外部送信されません。画像対応モデルが必要です。"
+      : "モデル未設定時は会話を送信できません。画像・動画分析には画像入力に対応したモデルが必要です。";
   document.querySelector("#chat-model").textContent = active
     ? `${health.model_remote ? "外部" : "ローカル"}モデル: ${health.model}`
     : "モデル未接続";
@@ -536,6 +677,7 @@ function startApp() {
   loadMemories().catch((error) => showToast(`記憶を読み込めません: ${error.message}`));
   loadChat().catch((error) => showToast(`会話を読み込めません: ${error.message}`));
   loadFiles().catch((error) => showToast(`ファイルを読み込めません: ${error.message}`));
+  loadTaskMediaOptions().catch((error) => showToast(`メディア一覧を読み込めません: ${error.message}`));
   refreshHealth().catch((error) => showToast(`実行状態を読み込めません: ${error.message}`));
 }
 
@@ -552,9 +694,11 @@ taskForm.addEventListener("submit", async (event) => {
         title: formData.get("title"),
         goal: formData.get("goal"),
         priority: Number(formData.get("priority")),
+        media: [...taskMediaFiles.selectedOptions].filter((option) => !option.disabled).map((option) => option.value),
       }),
     });
     taskForm.reset();
+    taskMediaFiles.selectedIndex = -1;
     document.querySelector("#task-priority").value = "3";
     statusFilter.value = "all";
     await loadTasks();
@@ -576,19 +720,30 @@ chatForm.addEventListener("submit", async (event) => {
   button.disabled = true;
   chatInput.disabled = true;
   chatMessages.append(renderChatMessage({ role: "user", content: message }));
-  chatMessages.append(makeElement("p", "chat-thinking", "Marsが考えています…"));
+  const isVideoAnalysis = [...selectedChatMedia].some((path) => /\.(mp4|mov|webm)$/i.test(path));
+  const thinking = makeElement(
+    "p",
+    "chat-thinking",
+    isVideoAnalysis ? "動画から時刻付きフレームを抽出し、Marsが分析しています…" : "Marsが内容を分析しています…",
+  );
+  chatMessages.append(thinking);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   try {
     const result = await request("/api/chat", {
       method: "POST",
-      body: JSON.stringify({ message, files: [...selectedChatFiles] }),
+      body: JSON.stringify({
+        message,
+        files: [...selectedChatFiles],
+        media: [...selectedChatMedia],
+      }),
     });
-    chatMessages.append(renderChatMessage(result.message));
+    thinking.remove();
+    chatMessages.append(renderChatMessage({ ...result.message, media_frames: result.media_frames }));
     chatInput.value = "";
     selectedChatFiles.clear();
-    renderChatAttachments();
     loadFiles().catch((error) => showToast(error.message));
   } catch (error) {
+    thinking.remove();
     try {
       await loadChat();
     } catch (historyError) {
@@ -648,19 +803,23 @@ fileImport.addEventListener("change", async () => {
   if (!files.length) return;
   const textExtensions = new Set([".txt", ".md", ".csv", ".json", ".log"]);
   const documentExtensions = new Set([".pdf", ".docx", ".xlsx"]);
+  const mediaExtensions = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".webm"]);
   const imported = [];
   const failures = [];
   for (const file of files) {
     const dot = file.name.lastIndexOf(".");
     const extension = dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
     const isText = textExtensions.has(extension);
-    if (!isText && !documentExtensions.has(extension)) {
+    const isMedia = mediaExtensions.has(extension);
+    if (!isText && !documentExtensions.has(extension) && !isMedia) {
       failures.push(`${file.name}: 対応していない形式です`);
       continue;
     }
-    const limit = isText ? 1_000_000 : 20 * 1024 * 1024;
+    const limit = isText ? 1_000_000 : documentExtensions.has(extension)
+      ? 20 * 1024 * 1024
+      : /\.(png|jpg|jpeg|webp)$/i.test(extension) ? 12 * 1024 * 1024 : 25 * 1024 * 1024;
     if (file.size > limit) {
-      failures.push(`${file.name}: ${isText ? "1" : "20"} MBを超えています`);
+      failures.push(`${file.name}: ${Math.floor(limit / (1024 * 1024))} MBを超えています`);
       continue;
     }
     try {
@@ -681,6 +840,7 @@ fileImport.addEventListener("change", async () => {
   fileSearch.value = "";
   try {
     await loadFiles();
+    await loadTaskMediaOptions();
   } catch (error) {
     failures.push(`一覧の更新に失敗しました: ${error.message}`);
   }
@@ -689,6 +849,56 @@ fileImport.addEventListener("change", async () => {
   } else {
     showToast(`${imported.length}件を取り込みました`);
   }
+});
+
+chatMediaInput.addEventListener("change", async () => {
+  const files = [...(chatMediaInput.files || [])];
+  const allowed = new Set([".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov", ".webm"]);
+  const failures = [];
+  for (const file of files) {
+    const extension = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
+    if (!allowed.has(extension)) {
+      failures.push(`${file.name}: PNG、JPG、WEBP、MP4、MOV、WEBMのみ対応しています`);
+      continue;
+    }
+    if (selectedChatFiles.size + selectedChatMedia.size >= 3) {
+      failures.push(`${file.name}: 一度に添付できるファイルは3件までです`);
+      break;
+    }
+    if (/\.(mp4|mov|webm)$/i.test(extension)
+      && [...selectedChatMedia].some((path) => /\.(mp4|mov|webm)$/i.test(path))) {
+      failures.push(`${file.name}: 一度に添付できる動画は1件までです`);
+      continue;
+    }
+    const limit = /\.(png|jpg|jpeg|webp)$/i.test(extension) ? 12 * 1024 * 1024 : 25 * 1024 * 1024;
+    if (file.size > limit) {
+      failures.push(`${file.name}: ${Math.floor(limit / (1024 * 1024))} MBを超えています`);
+      continue;
+    }
+    try {
+      const path = [currentFolder, file.name].filter(Boolean).join("/");
+      const result = await request("/api/files", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "import",
+          path,
+          content_base64: await fileToBase64(file),
+        }),
+      });
+      selectedChatMedia.add(result.file.path);
+    } catch (error) {
+      failures.push(`${file.name}: ${error.message}`);
+    }
+  }
+  chatMediaInput.value = "";
+  renderChatAttachments();
+  try {
+    await loadFiles();
+    await loadTaskMediaOptions();
+  } catch (error) {
+    failures.push(`メディア一覧を更新できません: ${error.message}`);
+  }
+  if (failures.length) showToast(failures.join(" / "));
 });
 
 async function fileToBase64(file) {

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import urllib.error
@@ -27,13 +28,37 @@ class OpenAICompatibleProvider:
         self.timeout = timeout
 
     def complete(self, system, prompt):
+        return self._complete(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+        )
+
+    def complete_with_images(self, system, prompt, images):
+        content = [{"type": "text", "text": prompt}]
+        content.extend(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image['mime_type']};base64,"
+                    + base64.b64encode(image["data"]).decode("ascii")
+                },
+            }
+            for image in images
+        )
+        return self._complete(
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ]
+        )
+
+    def _complete(self, messages):
         body = json.dumps(
             {
                 "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
+                "messages": messages,
                 "temperature": 0.2,
                 "stream": False,
             }

@@ -1,9 +1,12 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
 
-from mars import TaskStore
+from PIL import Image
+
+from mars import LocalFileStore, TaskStore
 from mars_core.agent import AgentWorker
 from mars_core.models import ModelError
 
@@ -25,6 +28,20 @@ class FakeProvider:
         self.system_prompts.append(system)
         self.prompts.append(prompt)
         return next(self.responses)
+
+
+class FakeVisualProvider(FakeProvider):
+    def __init__(self):
+        super().__init__()
+        self.responses = iter([
+            '{"steps":["画像・動画の内容を確認する"]}',
+            '{"action":"complete","summary":"画像分析の結果を調査記録に含めました。"}',
+        ])
+        self.visual_inputs = []
+
+    def complete_with_images(self, system, prompt, images):
+        self.visual_inputs.append((system, prompt, images))
+        return "画像には青い円が写っています。"
 
 
 class AgentWorkerTests(unittest.TestCase):
@@ -86,6 +103,50 @@ class AgentWorkerTests(unittest.TestCase):
 
         self.assertEqual(failed["status"], "failed")
         self.assertEqual(failed["retry_count"], active["max_retries"] + 1)
+
+    def test_media_analysis_is_saved_and_reused_in_task_findings(self):
+        files = LocalFileStore(Path(self.temp_dir.name) / "files")
+        image = io.BytesIO()
+        Image.new("RGB", (20, 20), "blue").save(image, format="PNG")
+        files.import_file("evidence.png", image.getvalue())
+        provider = FakeVisualProvider()
+        worker = AgentWorker(self.store, provider, media_store=files)
+        task = self.store.create("画像を調べる", "画像の内容を調査する", 4, ["evidence.png"])
+
+        worker.run_task(self.store.claim_next())
+        completed = self.store.get(task["id"])
+
+        self.assertEqual(completed["status"], "completed")
+        finding = next(item for item in completed["findings"] if item["type"] == "media")
+        self.assertEqual(finding["status"], "analyzed")
+        self.assertIn("青い円", finding["analysis"])
+        self.assertEqual(provider.visual_inputs[0][2][0]["label"], "evidence.png")
+        self.assertEqual(completed["tools"][0]["name"], "media_analysis")
+
+    def test_failed_media_analysis_is_retried_when_task_resumes(self):
+        files = LocalFileStore(Path(self.temp_dir.name) / "files")
+        image = io.BytesIO()
+        Image.new("RGB", (20, 20), "blue").save(image, format="PNG")
+        files.import_file("evidence.png", image.getvalue())
+        provider = FakeVisualProvider()
+        worker = AgentWorker(self.store, provider, media_store=files)
+        task = self.store.create("画像を再分析する", "画像の内容を調査する", 4, ["evidence.png"])
+        active = self.store.claim_next()
+        failed_findings = active["findings"]
+        failed_findings[0].update({"status": "failed", "error": "一時的な読み取り失敗"})
+        self.store.checkpoint(
+            task["id"],
+            {"status": "running", "findings": failed_findings},
+        )
+
+        worker.run_task(self.store.get(task["id"]))
+        resumed = self.store.get(task["id"])
+
+        finding = next(item for item in resumed["findings"] if item["type"] == "media")
+        self.assertEqual(resumed["status"], "completed")
+        self.assertEqual(finding["status"], "analyzed")
+        self.assertNotIn("error", finding)
+        self.assertEqual(len(provider.visual_inputs), 1)
 
 
 if __name__ == "__main__":
