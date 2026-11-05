@@ -18,6 +18,7 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 from PIL import Image
 
 from mars import LocalFileStore, MarsHandler, TaskStore
+from mars_core.models import ModelError
 
 
 class TaskStoreTests(unittest.TestCase):
@@ -181,6 +182,23 @@ class TaskApiTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join()
         self.temp_dir.cleanup()
+
+    def test_health_reports_unavailable_configured_model_as_waiting(self):
+        handler = self.server.RequestHandlerClass
+
+        class OfflineProvider:
+            def check_connection(self):
+                raise ModelError("推論サーバーに接続できません")
+
+        handler.provider = OfflineProvider()
+        handler.model_status = "tiny-model"
+        with urlopen(self.base_url + "/api/health") as response:
+            health = json.load(response)
+
+        self.assertEqual(health["engine"], "waiting_for_model")
+        self.assertTrue(health["model_configured"])
+        self.assertFalse(health["model_connected"])
+        self.assertIn("接続できません", health["model_error"])
 
     def test_create_and_list_task_over_http(self):
         body = json.dumps({"title": "HTTPテスト", "goal": "APIで保存", "priority": 4}).encode()

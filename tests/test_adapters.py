@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from mars_core.models import OpenAICompatibleProvider, configured_provider, parse_json_object
+from mars_core.models import ModelError, OpenAICompatibleProvider, configured_provider, parse_json_object
 from mars_core.research import (
     BingResultParser,
     PageTextParser,
@@ -73,6 +73,48 @@ class ModelAdapterTests(unittest.TestCase):
         self.assertEqual(received["body"]["model"], "tiny-model")
         self.assertEqual(received["auth"], "Bearer secret")
 
+
+    def test_connection_check_confirms_configured_model_and_uses_local_auth(self):
+        received = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                received["path"] = self.path
+                received["auth"] = self.headers.get("Authorization")
+                content = json.dumps({"data": [{"id": "tiny-model"}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+
+            def log_message(self, format_string, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            endpoint = f"http://127.0.0.1:{server.server_port}/v1"
+            provider = OpenAICompatibleProvider(endpoint, "tiny-model", "secret")
+            self.assertTrue(provider.check_connection())
+            self.assertEqual(received["path"], "/v1/models")
+            self.assertEqual(received["auth"], "Bearer secret")
+
+            missing = OpenAICompatibleProvider(endpoint, "missing-model")
+            with self.assertRaisesRegex(ModelError, "指定モデルが見つかりません"):
+                missing.check_connection()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_provider_rejects_endpoint_query_and_fragment(self):
+        for suffix in ("?token=secret", "#fragment"):
+            with self.subTest(suffix=suffix), self.assertRaises(ValueError):
+                OpenAICompatibleProvider("http://127.0.0.1:11434/v1" + suffix, "tiny-model")
+        with self.assertRaisesRegex(ValueError, "ポート"):
+            OpenAICompatibleProvider("http://127.0.0.1:invalid/v1", "tiny-model")
 
     def test_openai_compatible_request_includes_multimodal_images(self):
         received = {}

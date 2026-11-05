@@ -1097,8 +1097,24 @@ class MarsHandler(BaseHTTPRequestHandler):
         if route.path == "/api/health":
             tasks = self.store.list()
             counts = {state: sum(task["status"] == state for task in tasks) for state in TASK_STATES}
-            engine = "active" if self.worker else "waiting_for_model"
-            self._send_json(200, {"ok": True, "engine": engine, "model": self.model_status, "model_remote": self.model_remote, "counts": counts})
+            model_connected = False
+            model_error = ""
+            if self.provider:
+                try:
+                    model_connected = self.provider.check_connection()
+                except ModelError as error:
+                    model_error = str(error)
+            engine = "active" if self.worker and model_connected else "waiting_for_model"
+            self._send_json(200, {
+                "ok": True,
+                "engine": engine,
+                "model": self.model_status,
+                "model_configured": self.provider is not None,
+                "model_connected": model_connected,
+                "model_error": model_error,
+                "model_remote": self.model_remote,
+                "counts": counts,
+            })
             return
         if route.path.startswith("/api/tasks/"):
             task_id = route.path.removeprefix("/api/tasks/").strip("/")

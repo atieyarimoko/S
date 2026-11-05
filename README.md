@@ -29,6 +29,8 @@ MARS_MODEL="ollama list に表示されるモデル名" python3 mars.py
 
 初期接続先は `http://127.0.0.1:11434/v1/chat/completions` です。モデル未設定時はタスクを保存するだけで、自動実行しません。Ollama本体はこのリポジトリには含まれず、モデルごとのライセンス・必要RAM・速度も異なります。モデル取得前に [Ollama Library](https://ollama.com/library) で確認してください。
 
+Ollamaを起動してモデルを取得後、`ollama list` に表示される名前を `MARS_MODEL` に指定します。Marsのヘルス画面は `/v1/models` を確認し、推論サーバーへの接続と指定モデルの登録を区別して表示します。接続確認はモデルに推論を依頼するものではありません。モデル停止中もタスクは保存され、実行待ちになります。
+
 AIモデルはローカル接続だけを許可します。外部モデルAPIや `MARS_ALLOW_REMOTE_MODEL` による例外は利用できず、課金APIへフォールバックしません。モデルのウェイトはMarsに同梱していないため、選択したモデルのライセンスと利用条件を確認してから取得してください。
 
 ライセンス候補として確認したIBMの[Granite 3.3 2B Instruct](https://huggingface.co/ibm-granite/granite-3.3-2b-instruct)はモデルカードでApache-2.0とされ、日本語を含む複数言語を記載しています。[Granite Vision 3.2 2B](https://huggingface.co/ibm-granite/granite-vision-3.2-2b)もモデルカードでApache-2.0ですが、画像指示は英語対応と記載されています。いずれもこの環境では未導入・未検証で、Ollama向け配布物の互換性・正確な量子化版の条件は別途確認が必要です。対照的に[Qwen2.5 3Bのライセンス](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct/blob/main/LICENSE)は非商用目的に限定するため、一般用途の無条件な無料モデルとしては推奨しません。

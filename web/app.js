@@ -783,24 +783,31 @@ async function refreshHealth() {
   const health = await request("/api/health");
   const engineLabel = document.querySelector(".engine-label");
   const dot = engineLabel.querySelector(".engine-dot");
-  const active = health.engine === "active";
-  document.querySelector("#settings-model").textContent = active
-    ? `${health.model_remote ? "外部" : "ローカル"}モデル「${health.model}」を設定中です。APIキーを画面やデータベースには保存しません。`
+  const active = health.model_connected;
+  document.querySelector("#settings-model").textContent = health.model_configured
+    ? active
+      ? `ローカルモデル「${health.model}」に接続しています。APIキーを画面やデータベースには保存しません。`
+      : `ローカルモデル「${health.model}」は未接続です。${health.model_error || "接続状態を確認してください"}`
     : "モデルは未設定です。環境変数で設定します。APIキーを画面やデータベースには保存しません。";
   document.querySelector(".chat-note").textContent = health.model_remote
     ? "会話・添付ファイル・画像および動画から抽出したフレーム・関連記憶は外部モデルへ送信されます。機密情報を入力・添付しないでください。"
     : active
       ? "会話・添付ファイル・画像および動画から抽出したフレーム・関連記憶を設定済みモデルに渡します。ローカルモデルなら外部送信されません。画像対応モデルが必要です。"
-      : "モデル未設定時は会話を送信できません。画像・動画分析には画像入力に対応したモデルが必要です。";
+      : "接続済みのローカルモデルが必要です。画像・動画分析には画像入力に対応したモデルが必要です。";
   document.querySelector("#chat-model").textContent = active
     ? `${health.model_remote ? "外部" : "ローカル"}モデル: ${health.model}`
     : "モデル未接続";
-  engineLabel.replaceChildren(dot, document.createTextNode(active ? `エージェント準備済み · ${health.model}` : "モデル未接続"));
+  engineLabel.replaceChildren(
+    dot,
+    document.createTextNode(active ? `モデル接続済み · ${health.model}` : "モデル未接続"),
+  );
   document.querySelector(".notice p").textContent = active
     ? health.model_remote
       ? `外部モデル ${health.model} へ依頼内容と調査資料が送信されます。タスクは優先度順に実行されます。`
       : `ローカルモデル ${health.model} で計画・Web検索・公開HTTPSページの調査を実行します。検索語は検索事業者へ送信されます。`
-    : `タスクは保存できますが自動実行されません。OllamaなどOpenAI互換モデルを設定して再起動してください。検索語は検索事業者へ送信されます。`;
+    : health.model_configured
+      ? `タスクは保存済みです。モデルに接続できていないため実行を待っています。${health.model_error || ""} 検索語は検索事業者へ送信されます。`
+      : `タスクは保存できますが自動実行されません。OllamaなどOpenAI互換モデルを設定して再起動してください。検索語は検索事業者へ送信されます。`;
   dot.classList.toggle("is-running", active);
 }
 

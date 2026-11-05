@@ -18,7 +18,18 @@ class ModelError(RuntimeError):
 class OpenAICompatibleProvider:
     def __init__(self, endpoint, model, api_key="", timeout=90):
         parsed = urllib.parse.urlparse(endpoint)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        try:
+            parsed.port
+        except ValueError as error:
+            raise ValueError("モデルURLのポートが不正です") from error
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
             raise ValueError("モデルURLは認証情報を含まないHTTP(S) URLにしてください")
         self.endpoint = endpoint.rstrip("/")
         if not self.endpoint.endswith("/chat/completions"):
@@ -54,6 +65,35 @@ class OpenAICompatibleProvider:
             ]
         )
 
+    def check_connection(self):
+        models_url = self.endpoint.removesuffix("/chat/completions") + "/models"
+        request = urllib.request.Request(models_url, headers={"Accept": "application/json"})
+        if self.api_key:
+            request.add_header("Authorization", "Bearer " + self.api_key)
+        try:
+            with urllib.request.urlopen(request, timeout=min(self.timeout, 5)) as response:
+                data = response.read(1_000_001)
+            if len(data) > 1_000_000:
+                raise ModelError("モデル一覧の応答が上限サイズを超えました")
+            payload = json.loads(data)
+            models = payload["data"]
+            if not isinstance(models, list):
+                raise ModelError("モデル一覧の応答形式が不正です")
+            available = {
+                item["id"]
+                for item in models
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            }
+            if self.model not in available:
+                raise ModelError("ローカル推論サーバーには接続できますが、指定モデルが見つかりません")
+            return True
+        except urllib.error.HTTPError as error:
+            raise ModelError(f"ローカル推論サーバーがHTTP {error.code}を返しました") from error
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            raise ModelError(f"ローカル推論サーバーに接続できません: {error}") from error
+        except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ModelError("モデル一覧の応答形式が不正です") from error
+
     def _complete(self, messages):
         body = json.dumps(
             {
@@ -87,7 +127,7 @@ class OpenAICompatibleProvider:
             raise ModelError(f"モデル接続がHTTP {error.code}を返しました", retry_after) from error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise ModelError(f"モデルに接続できません: {error}") from error
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+        except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ModelError("モデル応答の形式を読み取れません") from error
 
 
